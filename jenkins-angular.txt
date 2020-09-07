@@ -1,0 +1,57 @@
+pipeline {
+   agent any
+   environment {
+    VERSION = "$BUILD_NUMBER"
+    PROJECT = 'angular-dev'
+    JCRREPO = 'docker-repo'
+    IMAGE = "${JCRREPO}/${PROJECT}:${VERSION}"
+    JCRURL = 'http://10.100.252.155:8082'
+    JCRCRED = 'jcr'
+    helmchartname = 'angular'
+    }
+
+   stages {
+      stage('Import Latest Code') {
+         steps {
+            git branch: 'kubernetes', credentialsId: 'codecommit', url: 'https://git-codecommit.us-east-1.amazonaws.com/v1/repos/EnterpriseAngular890'
+         }
+      }
+      stage('Build Code') {
+         steps {
+             nodejs('nodejs') {
+                sh 'npm cache clean --force'
+                sh 'npm install'
+                sh 'npm run build:dev'
+                sh 'echo hi'
+            }
+         }
+      }
+      stage('Docker Image Build') {
+         steps {
+            script {
+                docker.build("$IMAGE")                  
+            }
+         }
+      }
+      stage('Push Image to registry') {
+         steps {
+            script {        
+                docker.withRegistry("$JCRURL","$JCRCRED"){
+                docker.image("$IMAGE").push()
+                }                  
+            }
+         }
+      }
+      stage('Helm Dry run  ') {
+         steps {
+            sh './script_dryrun.sh $BUILD_NUMBER'
+         }
+      }
+      stage('Deploy on K8s') {
+         steps {
+            sh './script_deploy.sh $BUILD_NUMBER'
+         }
+      }
+      
+   }
+}
